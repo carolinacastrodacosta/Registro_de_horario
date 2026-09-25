@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Folha de Ponto</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="wrap">
+    <header>
+      <p class="eyebrow">Loja 1</p>
+      <h1>Registro de horário</h1>
+    </header>
+
+    <div class="clock-card">
+      <div class="clock-time" id="clockTime">--:--</div>
+      <div class="clock-date" id="clockDate">carregando...</div>
+    </div>
+
+    <div class="buttons">
+      <button class="btn btn-entrada" id="btnEntrada">
+        <span id="btnEntradaLabel">Bater entrada</span>
+        <small>registra a hora de agora</small>
+      </button>
+      <button class="btn btn-saida" id="btnSaida">
+        <span id="btnSaidaLabel">Bater saída</span>
+        <small>registra a hora de agora</small>
+      </button>
+    </div>
+
+    <div class="status-card">
+      <div class="status-row">
+        <span class="status-label">Entrada de hoje</span>
+        <span>
+          <span class="status-value empty" id="statusEntrada">ainda não registrada</span>
+          <button class="edit-link" id="editEntrada" style="display:none;">corrigir</button>
+        </span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Saída de hoje</span>
+        <span>
+          <span class="status-value empty" id="statusSaida">ainda não registrada</span>
+          <button class="edit-link" id="editSaida" style="display:none;">corrigir</button>
+        </span>
+      </div>
+    </div>
+
+    <h2 class="section-title">Semana atual</h2>
+    <table class="week">
+      <thead>
+        <tr><th>Dia</th><th>Entrada</th><th>Saída</th></tr>
+      </thead>
+      <tbody id="weekBody"></tbody>
+    </table>
+
+    <p class="hint">Toque em "corrigir" se um horário foi batido errado. O registro fica salvo automaticamente — não precisa enviar nada por mensagem.</p>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+      <h3 id="modalTitle">Corrigir horário</h3>
+      <input type="time" id="modalInput">
+      <div class="modal-actions">
+        <button class="modal-cancel" id="modalCancel">Cancelar</button>
+        <button class="modal-save" id="modalSave">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const WEEKDAYS = ["domingo","segunda-feira","terça-feira","quarta-feira","quinta-feira","sexta-feira","sábado"];
+  const WEEKDAYS_SHORT = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function dateKey(d) { return `ponto:${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  function timeStr(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+
+  function updateClock() {
+    const now = new Date();
+    document.getElementById("clockTime").textContent = timeStr(now);
+    const dateLabel = `${WEEKDAYS[now.getDay()]}, ${now.getDate()} de ${now.toLocaleDateString("pt-BR",{month:"long"})}`;
+    document.getElementById("clockDate").textContent = dateLabel;
+  }
+  updateClock();
+  setInterval(updateClock, 1000 * 20);
+
+  async function getEntry(date) {
+    try {
+      const res = await window.localStorage.get(dateKey(date), true);
+      return res ? JSON.parse(res.value) : { entrada: null, saida: null };
+    } catch (e) {
+      return { entrada: null, saida: null };
+    }
+  }
+
+  async function setEntry(date, entry) {
+    try {
+      await window.localStorage.set(dateKey(date), JSON.stringify(entry), true);
+      return true;
+    } catch (e) {
+      showToast("Não deu para salvar agora. Tenta de novo.");
+      return false;
+    }
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  function isLate(saidaTime) {
+    if (!saidaTime) return false;
+    const [h, m] = saidaTime.split(":").map(Number);
+    return (h * 60 + m) > (16 * 60 + 30);
+  }
+
+  async function refreshToday() {
+    const today = new Date();
+    const entry = await getEntry(today);
+
+    const elEntrada = document.getElementById("statusEntrada");
+    const elSaida = document.getElementById("statusSaida");
+    const btnEntrada = document.getElementById("btnEntrada");
+    const btnSaida = document.getElementById("btnSaida");
+    const editEntrada = document.getElementById("editEntrada");
+    const editSaida = document.getElementById("editSaida");
+
+    if (entry.entrada) {
+      elEntrada.textContent = entry.entrada;
+      elEntrada.classList.remove("empty");
+      editEntrada.style.display = "inline";
+      btnEntrada.disabled = true;
+      document.getElementById("btnEntradaLabel").textContent = "Entrada registrada";
+    } else {
+      elEntrada.textContent = "ainda não registrada";
+      elEntrada.classList.add("empty");
+      editEntrada.style.display = "none";
+      btnEntrada.disabled = false;
+      document.getElementById("btnEntradaLabel").textContent = "Bater entrada";
+    }
+
+    if (entry.saida) {
+      elSaida.innerHTML = entry.saida + (isLate(entry.saida) ? '<span class="tag-late">depois das 16h30</span>' : "");
+      elSaida.classList.remove("empty");
+      editSaida.style.display = "inline";
+      btnSaida.disabled = true;
+      document.getElementById("btnSaidaLabel").textContent = "Saída registrada";
+    } else {
+      elSaida.textContent = "ainda não registrada";
+      elSaida.classList.add("empty");
+      editSaida.style.display = "none";
+      btnSaida.disabled = false;
+      document.getElementById("btnSaidaLabel").textContent = "Bater saída";
+    }
+  }
+
+  async function refreshWeek() {
+    const body = document.getElementById("weekBody");
+    body.innerHTML = "";
+    const today = new Date();
+    const dow = today.getDay();
+    const diffToMonday = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + diffToMonday);
+
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const entry = await getEntry(d);
+      const isToday = d.toDateString() === today.toDateString();
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="day-name">${WEEKDAYS_SHORT[d.getDay()]} ${d.getDate()}${isToday ? " •" : ""}</td>
+        <td class="${entry.entrada ? "" : "muted"}">${entry.entrada || "—"}</td>
+        <td class="${entry.saida ? "" : "muted"}">${entry.saida || "—"}${entry.saida && isLate(entry.saida) ? " ⚠" : ""}</td>
+      `;
+      body.appendChild(tr);
+    }
+  }
+
+  async function refreshAll() {
+    await refreshToday();
+    await refreshWeek();
+  }
+
+  document.getElementById("btnEntrada").addEventListener("click", async () => {
+    const today = new Date();
+    const entry = await getEntry(today);
+    entry.entrada = timeStr(today);
+    if (await setEntry(today, entry)) {
+      showToast("Entrada registrada às " + entry.entrada);
+      await refreshAll();
+    }
+  });
+
+  document.getElementById("btnSaida").addEventListener("click", async () => {
+    const today = new Date();
+    const entry = await getEntry(today);
+    entry.saida = timeStr(today);
+    if (await setEntry(today, entry)) {
+      showToast("Saída registrada às " + entry.saida);
+      await refreshAll();
+    }
+  });
+
+  // Correção manual
+  let editingField = null;
+  const modalBackdrop = document.getElementById("modalBackdrop");
+  const modalInput = document.getElementById("modalInput");
+  const modalTitle = document.getElementById("modalTitle");
+
+  function openModal(field) {
+    editingField = field;
+    modalTitle.textContent = field === "entrada" ? "Corrigir horário de entrada" : "Corrigir horário de saída";
+    modalInput.value = "";
+    modalBackdrop.classList.add("show");
+  }
+  document.getElementById("editEntrada").addEventListener("click", () => openModal("entrada"));
+  document.getElementById("editSaida").addEventListener("click", () => openModal("saida"));
+  document.getElementById("modalCancel").addEventListener("click", () => modalBackdrop.classList.remove("show"));
+
+  document.getElementById("modalSave").addEventListener("click", async () => {
+    if (!modalInput.value) { modalBackdrop.classList.remove("show"); return; }
+    const today = new Date();
+    const entry = await getEntry(today);
+    entry[editingField] = modalInput.value;
+    if (await setEntry(today, entry)) {
+      showToast("Horário corrigido.");
+      modalBackdrop.classList.remove("show");
+      await refreshAll();
+    }
+  });
+
+  refreshAll();
+</script>
+</body>
+</html>
