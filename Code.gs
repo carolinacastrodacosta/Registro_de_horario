@@ -35,8 +35,8 @@ function handleList_() {
     if (!r[0]) continue;
     rows.push({
       date: formatDateValue_(r[0]),
-      entrada: r[1] || '',
-      saida: r[2] || ''
+      entrada: formatTimeValue_(r[1]),
+      saida: formatTimeValue_(r[2])
     });
   }
   return jsonOutput({ rows: rows });
@@ -67,11 +67,11 @@ function handleSet_(params) {
   var col = field === 'entrada' ? 2 : 3;
 
   if (rowIndex === -1) {
-    var newRow = [date, '', ''];
-    newRow[col - 1] = time;
-    sheet.appendRow(newRow);
+    var newRowIndex = sheet.getLastRow() + 1;
+    sheet.getRange(newRowIndex, 1).setValue(date);
+    sheet.getRange(newRowIndex, col).setNumberFormat('@').setValue(time);
   } else {
-    sheet.getRange(rowIndex, col).setValue(time);
+    sheet.getRange(rowIndex, col).setNumberFormat('@').setValue(time);
   }
 
   return jsonOutput({ ok: true });
@@ -90,6 +90,16 @@ function getSheet_() {
 function formatDateValue_(v) {
   if (Object.prototype.toString.call(v) === '[object Date]') {
     return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return String(v);
+}
+
+function formatTimeValue_(v) {
+  if (!v) return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    // O Sheets guarda "07:30" como data/hora interna (base 1899-12-30);
+    // aqui extraímos só a parte de hora:minuto, no fuso do script.
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'HH:mm');
   }
   return String(v);
 }
