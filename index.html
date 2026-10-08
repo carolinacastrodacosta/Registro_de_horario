@@ -71,11 +71,15 @@
   </div>
 
 <script>
+  // Cole aqui a URL do seu App da Web (Apps Script) depois de implantar.
+  const API_URL = "COLE_AQUI_A_URL_DO_APP_SCRIPT";
+  const API_TOKEN = "M7TMhdj41YvLfFiszlmNAmeq";
+
   const WEEKDAYS = ["domingo","segunda-feira","terça-feira","quarta-feira","quinta-feira","sexta-feira","sábado"];
   const WEEKDAYS_SHORT = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 
   function pad(n) { return String(n).padStart(2, "0"); }
-  function dateKey(d) { return `ponto:${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+  function dateKey(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
   function timeStr(d) { return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 
   function updateClock() {
@@ -87,23 +91,54 @@
   updateClock();
   setInterval(updateClock, 1000 * 20);
 
-  async function getEntry(date) {
+  // Cache simples em memória com os registros vindos da planilha.
+  let rowsCache = null;
+
+  async function apiGetAllRows() {
     try {
-      const res = await window.localStorage.get(dateKey(date), true);
-      return res ? JSON.parse(res.value) : { entrada: null, saida: null };
+      const res = await fetch(`${API_URL}?token=${API_TOKEN}`);
+      const data = await res.json();
+      if (data.error) { showToast("Erro ao carregar os dados."); return []; }
+      return data.rows || [];
     } catch (e) {
-      return { entrada: null, saida: null };
+      showToast("Não deu para conectar com a planilha.");
+      return [];
     }
   }
 
-  async function setEntry(date, entry) {
+  async function apiSetField(dateStr, field, time) {
     try {
-      await window.localStorage.set(dateKey(date), JSON.stringify(entry), true);
+      const res = await fetch(API_URL, {
+        method: "POST",
+        redirect: "follow",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ token: API_TOKEN, date: dateStr, field, time }),
+      });
+      const data = await res.json();
+      if (data.error) { showToast("Não deu para salvar agora. Tenta de novo."); return false; }
       return true;
     } catch (e) {
       showToast("Não deu para salvar agora. Tenta de novo.");
       return false;
     }
+  }
+
+  async function loadRows(force) {
+    if (!rowsCache || force) rowsCache = await apiGetAllRows();
+    return rowsCache;
+  }
+
+  async function getEntry(date, force) {
+    const rows = await loadRows(force);
+    const key = dateKey(date);
+    const row = rows.find(r => r.date === key);
+    return row ? { entrada: row.entrada || null, saida: row.saida || null } : { entrada: null, saida: null };
+  }
+
+  async function setEntry(date, field, time) {
+    const ok = await apiSetField(dateKey(date), field, time);
+    if (ok) await loadRows(true);
+    return ok;
   }
 
   function showToast(msg) {
@@ -190,20 +225,18 @@
 
   document.getElementById("btnEntrada").addEventListener("click", async () => {
     const today = new Date();
-    const entry = await getEntry(today);
-    entry.entrada = timeStr(today);
-    if (await setEntry(today, entry)) {
-      showToast("Entrada registrada às " + entry.entrada);
+    const hora = timeStr(today);
+    if (await setEntry(today, "entrada", hora)) {
+      showToast("Entrada registrada às " + hora);
       await refreshAll();
     }
   });
 
   document.getElementById("btnSaida").addEventListener("click", async () => {
     const today = new Date();
-    const entry = await getEntry(today);
-    entry.saida = timeStr(today);
-    if (await setEntry(today, entry)) {
-      showToast("Saída registrada às " + entry.saida);
+    const hora = timeStr(today);
+    if (await setEntry(today, "saida", hora)) {
+      showToast("Saída registrada às " + hora);
       await refreshAll();
     }
   });
@@ -227,9 +260,7 @@
   document.getElementById("modalSave").addEventListener("click", async () => {
     if (!modalInput.value) { modalBackdrop.classList.remove("show"); return; }
     const today = new Date();
-    const entry = await getEntry(today);
-    entry[editingField] = modalInput.value;
-    if (await setEntry(today, entry)) {
+    if (await setEntry(today, editingField, modalInput.value)) {
       showToast("Horário corrigido.");
       modalBackdrop.classList.remove("show");
       await refreshAll();
