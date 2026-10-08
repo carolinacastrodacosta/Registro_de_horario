@@ -108,12 +108,14 @@
 
   async function apiSetField(dateStr, field, time) {
     try {
-      const res = await fetch(API_URL, {
-        method: "POST",
-        redirect: "follow",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ token: API_TOKEN, date: dateStr, field, time }),
+      const params = new URLSearchParams({
+        token: API_TOKEN,
+        action: "set",
+        date: dateStr,
+        field,
+        time,
       });
+      const res = await fetch(`${API_URL}?${params.toString()}`);
       const data = await res.json();
       if (data.error) { showToast("Não deu para salvar agora. Tenta de novo."); return false; }
       return true;

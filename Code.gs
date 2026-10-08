@@ -3,10 +3,12 @@
  * Cole este código em Extensões > Apps Script da sua planilha Google,
  * substituindo o conteúdo do arquivo Code.gs que vier por padrão.
  *
- * Depois de colar, vá em "Implantar" > "Nova implantação" > tipo "App da Web":
- *   - Executar como: Eu (seu e-mail)
- *   - Quem pode acessar: Qualquer pessoa
- * Copie a URL gerada e me envie.
+ * Depois de colar, vá em "Implantar" > "Gerenciar implantações" > ícone de lápis
+ * na implantação existente > "Nova versão" > "Implantar", para que a mudança
+ * entre em vigor na mesma URL que você já está usando.
+ *
+ * Tudo passa por GET (leitura e escrita) para evitar um bloqueio de CORS
+ * conhecido do Apps Script quando o POST é chamado de outro site.
  */
 
 var SHEET_NAME = 'Pontos';
@@ -16,6 +18,15 @@ function doGet(e) {
   if (!e || e.parameter.token !== TOKEN) {
     return jsonOutput({ error: 'unauthorized' });
   }
+
+  if (e.parameter.action === 'set') {
+    return handleSet_(e.parameter);
+  }
+
+  return handleList_();
+}
+
+function handleList_() {
   var sheet = getSheet_();
   var values = sheet.getDataRange().getValues();
   var rows = [];
@@ -31,38 +42,36 @@ function doGet(e) {
   return jsonOutput({ rows: rows });
 }
 
-function doPost(e) {
-  var body;
-  try {
-    body = JSON.parse(e.postData.contents);
-  } catch (err) {
-    return jsonOutput({ error: 'invalid_body' });
-  }
-  if (body.token !== TOKEN) {
-    return jsonOutput({ error: 'unauthorized' });
-  }
-  if (!body.date || !body.field || !body.time) {
+function handleSet_(params) {
+  var date = params.date;
+  var field = params.field;
+  var time = params.time;
+
+  if (!date || !field || !time) {
     return jsonOutput({ error: 'missing_fields' });
+  }
+  if (field !== 'entrada' && field !== 'saida') {
+    return jsonOutput({ error: 'invalid_field' });
   }
 
   var sheet = getSheet_();
   var values = sheet.getDataRange().getValues();
   var rowIndex = -1;
   for (var i = 1; i < values.length; i++) {
-    if (formatDateValue_(values[i][0]) === body.date) {
+    if (formatDateValue_(values[i][0]) === date) {
       rowIndex = i + 1; // linha real na planilha (1-indexed, +1 pelo cabeçalho)
       break;
     }
   }
 
-  var col = body.field === 'entrada' ? 2 : 3;
+  var col = field === 'entrada' ? 2 : 3;
 
   if (rowIndex === -1) {
-    var newRow = [body.date, '', ''];
-    newRow[col - 1] = body.time;
+    var newRow = [date, '', ''];
+    newRow[col - 1] = time;
     sheet.appendRow(newRow);
   } else {
-    sheet.getRange(rowIndex, col).setValue(body.time);
+    sheet.getRange(rowIndex, col).setValue(time);
   }
 
   return jsonOutput({ ok: true });
